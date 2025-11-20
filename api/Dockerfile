@@ -39,6 +39,9 @@ CMD ["node", "dist/main"]
 FROM base AS development
 ENV NODE_ENV=development
 
+# Install OpenSSL for Prisma
+RUN apk add --no-cache openssl openssl-dev
+
 COPY package*.json ./
 RUN npm install
 
