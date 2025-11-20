@@ -1,0 +1,266 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SaleChannel {
+  WEB
+  STORE
+  MOBILE
+  PHONE
+  B2B
+}
+
+enum SaleStatus {
+  PENDING_PAYMENT
+  CONFIRMED
+  IN_PREPARATION
+  IN_TRANSIT
+  DELIVERED
+  COMPLETED
+  CANCELLED
+  PENDING_MANUFACTURING
+  MANUFACTURING_IN_PROGRESS
+  MANUFACTURING_DELAYED
+  READY_FOR_DISPATCH
+  PARTIALLY_SHIPPED
+  SCHEDULED
+  FAILED_DELIVERY
+}
+
+enum AvailabilityType {
+  STOCK
+  MANUFACTURING
+  MADE_TO_ORDER
+}
+
+enum EventType {
+  SALE_CREATED
+  PAYMENT_RECEIVED
+  PAYMENT_FAILED
+  INVENTORY_RESERVED
+  INVENTORY_RESERVATION_FAILED
+  DISPATCH_CREATED
+  DISPATCH_FAILED
+  STATUS_CHANGED
+  MANUFACTURING_STARTED
+  MANUFACTURING_COMPLETED
+  SALE_CANCELLED
+  REFUND_PROCESSED
+}
+
+enum ReservationStatus {
+  ACTIVE
+  CONFIRMED
+  RELEASED
+  EXPIRED
+}
+
+enum DispatchStatus {
+  PENDING_PICKUP
+  PICKED_UP
+  IN_TRANSIT
+  OUT_FOR_DELIVERY
+  DELIVERED
+  FAILED_DELIVERY
+  CANCELLED
+}
+
+model Sale {
+  id                  String      @id @default(uuid())
+  saleNumber          String      @unique @map("sale_number")
+  channel             SaleChannel
+  status              SaleStatus
+  customerId          String      @map("customer_id")
+  customerEmail       String?     @map("customer_email")
+  customerPhone       String?     @map("customer_phone")
+
+  subtotal            Decimal     @db.Decimal(10, 2)
+  tax                 Decimal     @db.Decimal(10, 2)
+  shippingCost        Decimal     @map("shipping_cost") @db.Decimal(10, 2)
+  total               Decimal     @db.Decimal(10, 2)
+
+  // Referencias externas
+  inventoryReservationId  String? @map("inventory_reservation_id")
+  dispatchId              String? @map("dispatch_id")
+  manufacturingOrderId    String? @map("manufacturing_order_id")
+  paymentId               String? @map("payment_id")
+
+  // Direcciones (JSON)
+  deliveryAddress     Json?       @map("delivery_address")
+  billingAddress      Json?       @map("billing_address")
+
+  // Fechas
+  estimatedDeliveryDate   DateTime?   @map("estimated_delivery_date")
+  scheduledDeliveryDate   DateTime?   @map("scheduled_delivery_date")
+
+  // Metadata
+  metadata            Json?
+  notes               String?     @db.Text
+
+  // Auditoría
+  createdAt           DateTime    @default(now()) @map("created_at")
+  updatedAt           DateTime    @updatedAt @map("updated_at")
+  createdBy           String?     @map("created_by")
+  updatedBy           String?     @map("updated_by")
+
+  // Relaciones
+  items               SaleItem[]
+  events              SaleEvent[]
+  reservations        ReservationSnapshot[]
+  dispatches          DispatchSnapshot[]
+
+  @@index([status])
+  @@index([customerId])
+  @@index([createdAt(sort: Desc)])
+  @@map("sales")
+}
+
+model SaleItem {
+  id              String              @id @default(uuid())
+  saleId          String              @map("sale_id")
+
+  productId       String              @map("product_id")
+  productName     String              @map("product_name")
+  productSku      String?             @map("product_sku")
+
+  quantity        Int
+  unitPrice       Decimal             @map("unit_price") @db.Decimal(10, 2)
+  subtotal        Decimal             @db.Decimal(10, 2)
+  tax             Decimal             @db.Decimal(10, 2)
+  total           Decimal             @db.Decimal(10, 2)
+
+  // Disponibilidad
+  availabilityType AvailabilityType?  @map("availability_type")
+  batchId          String?            @map("batch_id")
+
+  // Metadata
+  metadata        Json?
+
+  createdAt       DateTime            @default(now()) @map("created_at")
+
+  // Relaciones
+  sale            Sale                @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@index([saleId])
+  @@index([productId])
+  @@map("sale_items")
+}
+
+model SaleEvent {
+  id              BigInt      @id @default(autoincrement())
+  saleId          String      @map("sale_id")
+
+  eventType       EventType   @map("event_type")
+  eventData       Json        @map("event_data")
+
+  // Contexto
+  triggeredBy     String?     @map("triggered_by")
+  correlationId   String?     @map("correlation_id")
+
+  createdAt       DateTime    @default(now()) @map("created_at")
+
+  // Relaciones
+  sale            Sale        @relation(fields: [saleId], references: [id])
+
+  @@index([saleId])
+  @@index([createdAt(sort: Desc)])
+  @@index([correlationId])
+  @@map("sale_events")
+}
+
+model ReservationSnapshot {
+  id                      String              @id @default(uuid())
+  saleId                  String              @map("sale_id")
+
+  externalReservationId   String              @map("external_reservation_id")
+  status                  ReservationStatus
+
+  items                   Json
+
+  reservedAt              DateTime?           @map("reserved_at")
+  expiresAt               DateTime?           @map("expires_at")
+  confirmedAt             DateTime?           @map("confirmed_at")
+  releasedAt              DateTime?           @map("released_at")
+
+  lastSyncedAt            DateTime?           @map("last_synced_at")
+
+  // Relaciones
+  sale                    Sale                @relation(fields: [saleId], references: [id])
+
+  @@index([saleId])
+  @@index([externalReservationId])
+  @@map("reservations_snapshot")
+}
+
+model DispatchSnapshot {
+  id                  String          @id @default(uuid())
+  saleId              String          @map("sale_id")
+
+  externalDispatchId  String          @map("external_dispatch_id")
+  trackingNumber      String?         @map("tracking_number")
+  status              DispatchStatus
+
+  scheduledDate       DateTime?       @map("scheduled_date")
+  estimatedDelivery   DateTime?       @map("estimated_delivery")
+  actualDelivery      DateTime?       @map("actual_delivery")
+
+  deliveryAddress     Json?           @map("delivery_address")
+  statusHistory       Json?           @map("status_history")
+
+  lastSyncedAt        DateTime?       @map("last_synced_at")
+
+  // Relaciones
+  sale                Sale            @relation(fields: [saleId], references: [id])
+
+  @@index([saleId])
+  @@index([externalDispatchId])
+  @@map("dispatches_snapshot")
+}
+
+model IdempotencyKey {
+  id              String      @id @default(uuid())
+  key             String      @unique
+
+  requestHash     String      @map("request_hash")
+  responseData    Json?       @map("response_data")
+  statusCode      Int?        @map("status_code")
+
+  createdAt       DateTime    @default(now()) @map("created_at")
+  expiresAt       DateTime    @map("expires_at")
+
+  @@index([key])
+  @@index([expiresAt])
+  @@map("idempotency_keys")
+}
+
+model ApiLog {
+  id              BigInt      @id @default(autoincrement())
+  saleId          String?     @map("sale_id")
+
+  apiName         String      @map("api_name")
+  endpoint        String
+  method          String
+
+  requestData     Json?       @map("request_data")
+  responseData    Json?       @map("response_data")
+  responseStatus  Int?        @map("response_status")
+  responseTimeMs  Int?        @map("response_time_ms")
+
+  errorMessage    String?     @map("error_message") @db.Text
+
+  correlationId   String?     @map("correlation_id")
+  createdAt       DateTime    @default(now()) @map("created_at")
+
+  @@index([saleId])
+  @@index([apiName])
+  @@index([createdAt(sort: Desc)])
+  @@map("api_logs")
+}
