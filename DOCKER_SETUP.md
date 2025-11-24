@@ -20,7 +20,7 @@ Se ha configurado exitosamente el proyecto para ejecutarse en Docker con todos s
 ### 3. API de Ventas (NestJS)
 - **Puerto**: 3000
 - **URL**: http://localhost:3000/api/v1
-- **Swagger Docs**: http://localhost:3000/api/v1/docs
+- **Swagger Docs**: http://localhost:3000/api/docs
 - **Estado**: ✅ Funcionando
 
 ### 4. pgAdmin (Gestión de PostgreSQL)
